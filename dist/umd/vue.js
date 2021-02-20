@@ -20,13 +20,132 @@
     return _typeof(obj);
   }
 
+  function _classCallCheck(instance, Constructor) {
+    if (!(instance instanceof Constructor)) {
+      throw new TypeError("Cannot call a class as a function");
+    }
+  }
+
+  function _defineProperties(target, props) {
+    for (var i = 0; i < props.length; i++) {
+      var descriptor = props[i];
+      descriptor.enumerable = descriptor.enumerable || false;
+      descriptor.configurable = true;
+      if ("value" in descriptor) descriptor.writable = true;
+      Object.defineProperty(target, descriptor.key, descriptor);
+    }
+  }
+
+  function _createClass(Constructor, protoProps, staticProps) {
+    if (protoProps) _defineProperties(Constructor.prototype, protoProps);
+    if (staticProps) _defineProperties(Constructor, staticProps);
+    return Constructor;
+  }
+
   function isObject(data) {
     return _typeof(data) === 'object' && data !== null;
   }
+  function def(data, key, val) {
+    Object.defineProperty(data, key, {
+      enumerable: false,
+      configurable: false,
+      value: val
+    });
+  }
 
-  // 把data中的数据 使用Object.defineProperty重新定义
+  //  重写数组的方法   push shift unshift pop reverse sort splice   会导致数组本身发生变化
+  var oldArryMethods = Array.prototype;
+  var arryMethods = Object.create(oldArryMethods);
+  var methods = ['push', 'shift', 'unshift', 'shift', 'pop', 'reverse', 'sort', 'splice'];
+  methods.forEach(function (item) {
+    arryMethods[item] = function () {
+      console.log('调用push'); // 切片编程
+
+      for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
+        args[_key] = arguments[_key];
+      }
+
+      var result = oldArryMethods[item].apply(this, args); //调用原生方法
+      // push unshift 添加的元素可能还是一个对象
+
+      var inserted; //用户插入的数据
+
+      var ob = this.__ob__;
+
+      switch (item) {
+        case 'push':
+        case 'unshift':
+          inserted = args;
+          break;
+
+        case 'splice':
+          inserted = args.slice(2);
+          break;
+      }
+
+      if (inserted) ob.observerArry(inserted); // 将新增属性继续监听
+
+      return result;
+    };
+  });
+
+  var Observer = /*#__PURE__*/function () {
+    function Observer(val) {
+      _classCallCheck(this, Observer);
+
+      // 给每一个监控过的对象增加__ob__属性
+      def(val, '__ob__', this); // val如果数据的层次多，就需要递归
+
+      if (Array.isArray(val)) {
+        // 数据劫持  数组每一项劫持  重写数组的方法
+        val.__proto__ = arryMethods;
+        this.observerArry(val);
+      } else {
+        this.walk(val);
+      }
+    }
+
+    _createClass(Observer, [{
+      key: "observerArry",
+      value: function observerArry(data) {
+        for (var i = 0; i < data.length; i++) {
+          observer(data[i]);
+        }
+      }
+    }, {
+      key: "walk",
+      value: function walk(data) {
+        var keys = Object.keys(data);
+        keys.forEach(function (key) {
+          defineReactive(data, key, data[key]);
+        });
+      }
+    }]);
+
+    return Observer;
+  }();
+
+  function defineReactive(data, key, value) {
+    observer(value);
+    Object.defineProperty(data, key, {
+      get: function get() {
+        return value;
+      },
+      set: function set(newVal) {
+        if (newVal !== value) {
+          value = newVal;
+          observer(value);
+        }
+      }
+    });
+  }
+
   function observer(data) {
-    console.log(isObject(), data, 'observe');
+    if (!isObject(data)) {
+      return;
+    }
+
+    return new Observer(data);
   }
 
   function initState(vm) {

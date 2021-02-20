@@ -12,14 +12,23 @@
     <script>
         let vm = new Vue({
             el: '#app',
-            data(){
-                return{
-                    name:'www',
-                    age:13
+            data() {
+                return {
+                    name: 'www',
+                    age: 13,
+                    address: {
+                        number: 123
+                    },
+                    arry: []
                 }
             }
         })
+        vm._data.arry.push({ a: 1, b: 2 })
+        console.log(vm._data);
     </script>
 </body>
+<!-- ast语法树
+    是用对象来描述原生语法     虚拟dom用对象来描述dom节点
+ -->
 
 </html>
