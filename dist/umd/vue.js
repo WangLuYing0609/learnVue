@@ -42,6 +42,9 @@
     return Constructor;
   }
 
+  function isFunction(data) {
+    return typeof data === 'function';
+  }
   function isObject(data) {
     return _typeof(data) === 'object' && data !== null;
   }
@@ -55,7 +58,8 @@
 
   //  重写数组的方法   push shift unshift pop reverse sort splice   会导致数组本身发生变化
   var oldArryMethods = Array.prototype;
-  var arryMethods = Object.create(oldArryMethods);
+  var arryMethods = Object.create(oldArryMethods); // arryMethods.__proto__ = Arry.prototype  继承
+
   var methods = ['push', 'shift', 'unshift', 'shift', 'pop', 'reverse', 'sort', 'splice'];
   methods.forEach(function (item) {
     arryMethods[item] = function () {
@@ -66,11 +70,11 @@
       }
 
       var result = oldArryMethods[item].apply(this, args); //调用原生方法
-      // push unshift 添加的元素可能还是一个对象
+      // push unshift splice添加的元素可能还是一个对象
 
       var inserted; //用户插入的数据
 
-      var ob = this.__ob__;
+      var ob = this.__ob__; //根据当前实例获取observer方法
 
       switch (item) {
         case 'push':
@@ -145,6 +149,10 @@
       return;
     }
 
+    if (data.__ob__) {
+      return;
+    }
+
     return new Observer(data);
   }
 
@@ -164,13 +172,95 @@
     if (opts.watch) ;
   }
 
+  function proxy(vm, source, key) {
+    Object.defineProperty(vm, key, {
+      get: function get() {
+        return vm[source][key];
+      },
+      set: function set(newVal) {
+        vm[source][key] = newVal;
+      }
+    });
+  }
+
   function initData(vm) {
     // 数据初始化
-    var data = vm.$options.data(); //用户传递的
+    var data = vm.$options.data(); //用户传递的   vue内部会对属性检测，如果是以$开头 不会进行
 
-    data = vm._data = typeof data === 'function' ? data.call(vm) : data; //对象劫持
+    data = vm._data = isFunction(data) ? data.call(vm) : data;
+
+    for (var key in data) {
+      proxy(vm, '_data', key);
+    } //对象劫持
+
 
     observer(data);
+  }
+
+  var cname = '[a-zA-Z_][\\w\\-\\.]*'; //标签名   
+
+  var qnameCapture = "((?:".concat(cname, "\\:)?").concat(cname, ")"); //获取标签名
+
+  var startTagOpen = new RegExp("^<".concat(qnameCapture)); //匹配开始标签
+  // aa = "xxxx" | 'xxxx' | xxxx
+
+  var attribute = /^\s*([^\s"'<>\/=]+)(?:\s*(=)\s*(?:"([^"]*)"+|'([^']*)'+|([^\s"'=<>`]+)))?/;
+  var startTagClose = /^\s*(\/?)>/; //标签关闭 > />
+  //  Html字符串解析成对应的脚本 
+
+  function parserHTML(html) {
+    function advance(len) {
+      html = html.substring(len);
+    }
+
+    function start(tagName, attr) {}
+
+    function parseStartTag() {
+      var start = html.match(startTagOpen);
+
+      if (start) {
+        var match = {
+          tagName: start[1],
+          attrs: []
+        };
+        advance(start[0].length);
+        var end, attr;
+
+        while (!(end = html.match(startTagClose)) && (attr = html.match(attribute))) {
+          match.attrs.push([{
+            name: attr[1],
+            value: attr[3] || attr[4] || attr[5]
+          }]);
+          advance(attr[0].length);
+        }
+
+        if (end) {
+          advance(end[0].length);
+        }
+
+        return match;
+      }
+
+      return false; //不是开始标签
+    }
+
+    while (html) {
+      var textEnd = html.indexOf('<');
+
+      if (textEnd == 0) {
+        var startTagMatch = parseStartTag();
+
+        if (startTagMatch) {
+          start(startTagMatch.tagName, startTagMatch.attrs);
+          continue;
+        }
+      }
+    }
+  }
+
+  function compileToFunction(template) {
+    console.log(template, 'www');
+    parserHTML(template);
   }
 
   function initMixin(Vue) {
@@ -181,7 +271,30 @@
 
       vm.$options = options; // 初始化状态
 
-      initState(vm);
+      initState(vm); //vm.$options.data   数据劫持
+
+      if (vm.$options.el) {
+        //数据挂载模版     自动挂载
+        vm.$mount(vm.$options.el);
+      }
+    };
+
+    Vue.prototype.$mount = function (el) {
+      var vm = this;
+      var options = vm.$options;
+      el = document.querySelector(el); // 把模版转换成对应的渲染函数 =》 虚拟dom概念  vnode =》 diff算法 更新虚拟dom =》产生新节点 更新
+      // render是内置渲染vnode的方法
+
+      if (!options.render) {
+        var template = options.template;
+
+        if (!template && el) {
+          template = el.outerHTML;
+          var render = compileToFunction(template);
+          console.log(render, 'render');
+          options.render = render;
+        }
+      }
     };
   }
 
